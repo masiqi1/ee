@@ -1,0 +1,186 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.special import factorial as sp_factorial
+
+# Define the cheaper_one function
+def cheaper_one(inventory_array, order, n):
+    i = 0
+    while i < n - 1:
+        if inventory_array[order[i]] == 0:
+            i += 1
+        else:
+            break
+    return i
+
+# Define the exp_cheaper_one function
+def exp_cheaper_one(T, E, inventory_array, lambda_, h, c, t, n):
+    temp = np.zeros(n)
+    expected_cost = np.zeros(n)
+    shortage_percentage = np.zeros(n)
+
+    for i in range(n):
+        if inventory_array[i] > 0:
+            for j in range(inventory_array[i]):
+                temp[i] += np.exp(-lambda_[i] * (1 - t)) * (lambda_[i] * (1 - t)) ** j / sp_factorial(j, exact=True)
+            shortage_percentage[i] = 1 - temp[i]
+            expected_cost[i] = (T - h[i] + c[i]) + E * shortage_percentage[i]
+        else:
+            expected_cost[i] = 2 * E
+
+    order = np.argsort(expected_cost)
+    i = 0
+    while i < n - 1:
+        if inventory_array[order[i]] == 0:
+            i += 1
+        else:
+            break
+
+    if expected_cost[order[i]] <= E:
+        index = order[i]
+    else:
+        index = n + 1
+    return index
+
+# Main settings
+n = 5
+T = 2
+E = 5
+inventory_array_initial = np.array([5, 6, 7, 7, 8])
+lambda_ = np.array([5, 6, 7, 8, 9])
+c = np.array([1.5, 1.4, 1.3, 1.2, 1.1])
+h = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
+
+per_cost = np.zeros(n)
+interval = np.zeros(n + 1)
+for i in range(n - 1):
+    per_cost[i] = -h[i] + c[i]
+    interval[i + 1] = sum(lambda_[:i + 1]) / sum(lambda_)
+per_cost[n - 1] = -h[n - 1] + c[n - 1]
+interval[n] = 1
+order = np.argsort(per_cost)
+
+ave_money_sec = np.zeros(100)
+ave_inven_sec = np.zeros(100)
+ave_emer_sec = np.zeros(100)
+ave_exp_sec = np.zeros(100)
+
+for sec_iter in range(100):
+    money = 0
+    inven = 0
+    emer = 0
+    exp = 0
+
+    for iter in range(1000):
+        # Reset inventory levels at the start of each iteration
+        inventory_array1 = inventory_array_initial.copy()
+        inventory_array2 = inventory_array_initial.copy()
+        inventory_array3 = inventory_array_initial.copy()
+        inventory_array4 = inventory_array_initial.copy()
+
+        t = 0
+        total_cost_money = 0
+        total_cost_inventory = 0
+        total_cost_emergency = 0
+        total_cost_exp = 0
+
+        while t <= 1:
+            t += np.random.exponential(1 / sum(lambda_))
+            if t <= 1:
+                a = np.random.rand()
+                for i in range(n):
+                    if interval[i] <= a <= interval[i + 1]:
+                        break
+###### MF
+                if inventory_array1[i] > 0:
+                    inventory_array1[i] -= 1
+                else:
+                    if any(inventory_array1):
+                        index = cheaper_one(inventory_array1, order, n)
+                        inventory_array1[order[index]] -= 1
+                        total_cost_money += T
+                    else:
+                        total_cost_money += E
+##### IF
+                if inventory_array2[i] > 0:
+                    inventory_array2[i] -= 1
+                else:
+                    if any(inventory_array2):
+                        indexes = np.argsort(-inventory_array2)
+                        inventory_array2[indexes[0]] -= 1
+                        total_cost_inventory += T
+                    else:
+                        total_cost_inventory += E
+###### NT
+                if inventory_array3[i] > 0:
+                    inventory_array3[i] -= 1
+                else:
+                    total_cost_emergency += E
+###### BP(HEURISTICS)
+                if inventory_array4[i] > 0:
+                    inventory_array4[i] -= 1
+                else:
+                    if any(inventory_array4):
+                        index = exp_cheaper_one(T, E, inventory_array4, lambda_, h, c, t, n)
+                        if index <= n:
+                            inventory_array4[index] -= 1
+                            total_cost_exp += T
+                        else:
+                            total_cost_exp += E
+                    else:
+                        total_cost_exp += E
+
+        total_cost_money += np.dot(h - c, inventory_array1)
+        total_cost_inventory += np.dot(h - c, inventory_array2)
+        total_cost_emergency += np.dot(h - c, inventory_array3)
+        total_cost_exp += np.dot(h - c, inventory_array4)
+
+        money += total_cost_money
+        inven += total_cost_inventory
+        emer += total_cost_emergency
+        exp += total_cost_exp
+
+    ave_inven_sec[sec_iter] = inven / iter
+    ave_money_sec[sec_iter] = money / iter
+    ave_emer_sec[sec_iter] = emer / iter
+    ave_exp_sec[sec_iter] = exp / iter
+
+    # Print results for each sec_iter
+    print(f'Sec Iter {sec_iter + 1} - Average Money Cost: {ave_money_sec[sec_iter]:.2f}, '
+          f'Average Inventory Cost: {ave_inven_sec[sec_iter]:.2f}, '
+          f'Average Emergency Cost: {ave_emer_sec[sec_iter]:.2f}, '
+          f'Average Expected Cost: {ave_exp_sec[sec_iter]:.2f}')
+
+# Final average results
+final_ave_money = np.mean(ave_money_sec)
+final_ave_inven = np.mean(ave_inven_sec)
+final_ave_emer = np.mean(ave_emer_sec)
+final_ave_exp = np.mean(ave_exp_sec)
+
+print(f'Final Average Money Cost (MF): {final_ave_money:.2f}')
+print(f'Final Average Inventory Cost (IF): {final_ave_inven:.2f}')
+print(f'Final Average Emergency Cost (NT): {final_ave_emer:.2f}')
+print(f'Final Average Expected Cost (BP): {final_ave_exp:.2f}')
+
+# Plot results
+xlax = range(100)
+plt.figure(figsize=(10, 8))
+plt.subplot(2, 2, 1)
+plt.plot(xlax, ave_money_sec)
+plt.title('Average Money Cost (MF)')
+
+plt.subplot(2, 2, 2)
+plt.plot(xlax, ave_inven_sec)
+plt.title('Average Inventory Cost (IF)')
+
+plt.subplot(2, 2, 3)
+plt.plot(xlax, ave_emer_sec)
+plt.title('Average Emergency Cost (NT)')
+
+plt.subplot(2, 2, 4)
+plt.plot(xlax, ave_exp_sec)
+plt.title('Average Expected Cost (BP)')
+
+plt.tight_layout()
+plt.savefig('case5_1000.png')
+plt.show()
+
